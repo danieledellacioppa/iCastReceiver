@@ -9,18 +9,18 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.lifecycleScope
-import com.example.icastreceiver.MainScreen
 import com.example.icastreceiver.ScreenCastViewModel
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import java.io.ByteArrayOutputStream
 import java.io.InputStream
 import java.net.ServerSocket
+import java.nio.ByteBuffer
 
 class MainActivity : ComponentActivity() {
 
     private lateinit var viewModel: ScreenCastViewModel
-    private val serverPort = 5000  // Assicurati che corrisponda a quello impostato su iOS
+    private val serverPort = 7000  // Assicurati che corrisponda a quello impostato su iOS
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -46,21 +46,29 @@ class MainActivity : ComponentActivity() {
 
     private fun handleClient(inputStream: InputStream) {
         lifecycleScope.launch(Dispatchers.IO) {
-            // Riceve i dati dell’immagine dal client e li converte in un array di byte
-            val buffer = ByteArray(1024 * 1024)  // 1MB buffer, dimensione variabile a seconda della risoluzione
-            var bytesRead: Int
             val byteArrayOutputStream = ByteArrayOutputStream()
+            val buffer = ByteArray(4) // Buffer per i primi 4 byte che contengono la dimensione del frame
 
-            while (inputStream.read(buffer).also { bytesRead = it } != -1) {
-                byteArrayOutputStream.write(buffer, 0, bytesRead)
+            while (true) {
+                // Leggi la dimensione del frame
+                if (inputStream.read(buffer) != 4) break
+                val dataSize = ByteBuffer.wrap(buffer).int
+                println("Ricevuto frame con dimensione: $dataSize bytes")
+
+                // Leggi il frame in base alla dimensione
+                val imageData = ByteArray(dataSize)
+                var totalBytesRead = 0
+                while (totalBytesRead < dataSize) {
+                    val bytesRead = inputStream.read(imageData, totalBytesRead, dataSize - totalBytesRead)
+                    if (bytesRead == -1) break
+                    totalBytesRead += bytesRead
+                }
+                println("Frame completo ricevuto, aggiornamento della vista...")
+
+                // Aggiorna l'immagine nel ViewModel
+                viewModel.receiveFrame(imageData)
             }
 
-            val imageData = byteArrayOutputStream.toByteArray()
-
-            // Aggiorna l'immagine nel ViewModel
-            viewModel.receiveFrame(imageData)
-
-            // Chiudi la connessione
             inputStream.close()
             byteArrayOutputStream.close()
         }
@@ -72,8 +80,9 @@ Ecco il nome del file numero 2:
 --- MainScreen.kt ---
 Contenuto del file numero 2:
 ---
-package com.example.icastreceiver
+package com.akhter.icastreceiver
 
+import android.graphics.BitmapFactory
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
@@ -81,22 +90,20 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
-import androidx.compose.ui.res.imageResource
-import androidx.compose.ui.unit.dp
-import coil.compose.AsyncImage
-import coil.compose.rememberAsyncImagePainter
-import java.io.ByteArrayInputStream
+import com.example.icastreceiver.ScreenCastViewModel
 
 @Composable
-fun MainScreen(viewModel: ScreenCastViewModel = viewModel()) {
+fun MainScreen(viewModel: ScreenCastViewModel) {
     val imageData by viewModel.imageData.collectAsState()
 
     Box(modifier = Modifier.fillMaxSize()) {
         imageData?.let { data ->
-            val bitmap = ImageBitmap.imageResource(data)
-            Image(bitmap = bitmap, contentDescription = null, modifier = Modifier.fillMaxSize())
+            // Converti `ByteArray` in `Bitmap`
+            val bitmap = BitmapFactory.decodeByteArray(data, 0, data.size)
+            bitmap?.let {
+                Image(bitmap = it.asImageBitmap(), contentDescription = null, modifier = Modifier.fillMaxSize())
+            }
         } ?: run {
             Text(text = "In attesa dello screencast...", modifier = Modifier.align(Alignment.Center))
         }

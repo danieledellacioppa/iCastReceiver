@@ -11,6 +11,7 @@ import kotlinx.coroutines.launch
 import java.io.ByteArrayOutputStream
 import java.io.InputStream
 import java.net.ServerSocket
+import java.nio.ByteBuffer
 
 class MainActivity : ComponentActivity() {
 
@@ -41,23 +42,35 @@ class MainActivity : ComponentActivity() {
 
     private fun handleClient(inputStream: InputStream) {
         lifecycleScope.launch(Dispatchers.IO) {
-            // Riceve i dati dell’immagine dal client e li converte in un array di byte
-            val buffer = ByteArray(1024 * 1024)  // 1MB buffer, dimensione variabile a seconda della risoluzione
-            var bytesRead: Int
             val byteArrayOutputStream = ByteArrayOutputStream()
 
-            while (inputStream.read(buffer).also { bytesRead = it } != -1) {
-                byteArrayOutputStream.write(buffer, 0, bytesRead)
+            // Leggi i primi 4 byte per la dimensione del frame
+            val sizeBuffer = ByteArray(4)
+            if (inputStream.read(sizeBuffer) == 4) {
+                val frameSize = java.nio.ByteBuffer.wrap(sizeBuffer).int
+
+                // Verifica che la dimensione sia positiva
+                if (frameSize > 0) {
+                    val buffer = ByteArray(frameSize)
+                    var bytesRead: Int = 0
+                    var totalBytesRead = 0
+
+                    while (totalBytesRead < frameSize && inputStream.read(buffer, totalBytesRead, frameSize - totalBytesRead).also { bytesRead = it } != -1) {
+                        totalBytesRead += bytesRead
+                    }
+
+                    // Aggiorna l'immagine nel ViewModel solo quando il frame è completo
+                    if (totalBytesRead == frameSize) {
+                        viewModel.receiveFrame(buffer)
+                        println("Ricevuto frame con dimensione: $frameSize bytes")
+                    } else {
+                        println("Frame incompleto, bytes ricevuti: $totalBytesRead di $frameSize")
+                    }
+                } else {
+                    println("Errore: dimensione frame negativa o zero.")
+                }
             }
-
-            val imageData = byteArrayOutputStream.toByteArray()
-
-            // Aggiorna l'immagine nel ViewModel
-            viewModel.receiveFrame(imageData)
-
-            // Chiudi la connessione
             inputStream.close()
-            byteArrayOutputStream.close()
         }
     }
 }
