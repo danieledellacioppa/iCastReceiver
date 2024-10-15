@@ -1,11 +1,8 @@
-package com.example.icastreceiver
+package com.akhter.icastreceiver
 
 import androidx.lifecycle.ViewModel
-import androidx.lifecycle.viewModelScope
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.launch
 
 class ScreenCastViewModel : ViewModel() {
 
@@ -13,8 +10,6 @@ class ScreenCastViewModel : ViewModel() {
     val imageData = _imageData.asStateFlow()
 
     fun receiveFrame(data: ByteArray) {
-        viewModelScope.launch(Dispatchers.IO) {
-            _imageData.value = data
-        }
+        _imageData.value = data
     }
 }

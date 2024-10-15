@@ -5,13 +5,12 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.lifecycleScope
-import com.example.icastreceiver.ScreenCastViewModel
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
-import java.io.ByteArrayOutputStream
 import java.io.InputStream
 import java.net.ServerSocket
 import java.nio.ByteBuffer
+import java.nio.ByteOrder
 
 class MainActivity : ComponentActivity() {
 
@@ -32,45 +31,70 @@ class MainActivity : ComponentActivity() {
 
     private fun startServer() {
         lifecycleScope.launch(Dispatchers.IO) {
-            val serverSocket = ServerSocket(serverPort)
-            while (true) {
-                val clientSocket = serverSocket.accept()
-                handleClient(clientSocket.getInputStream())
+            try {
+                val serverSocket = ServerSocket(serverPort)
+                println("Server in ascolto sulla porta $serverPort")
+                while (true) {
+                    val clientSocket = serverSocket.accept()
+                    println("Connessione accettata da ${clientSocket.inetAddress}")
+                    handleClient(clientSocket.getInputStream())
+                }
+            } catch (e: Exception) {
+                println("Errore nel server: ${e.message}")
             }
         }
     }
 
     private fun handleClient(inputStream: InputStream) {
         lifecycleScope.launch(Dispatchers.IO) {
-            val byteArrayOutputStream = ByteArrayOutputStream()
-
-            // Leggi i primi 4 byte per la dimensione del frame
-            val sizeBuffer = ByteArray(4)
-            if (inputStream.read(sizeBuffer) == 4) {
-                val frameSize = java.nio.ByteBuffer.wrap(sizeBuffer).int
-
-                // Verifica che la dimensione sia positiva
-                if (frameSize > 0) {
-                    val buffer = ByteArray(frameSize)
-                    var bytesRead: Int = 0
-                    var totalBytesRead = 0
-
-                    while (totalBytesRead < frameSize && inputStream.read(buffer, totalBytesRead, frameSize - totalBytesRead).also { bytesRead = it } != -1) {
-                        totalBytesRead += bytesRead
+            try {
+                val sizeBuffer = ByteArray(4)
+                while (true) {
+                    // Leggi i primi 4 byte per la dimensione del frame
+                    val bytesRead = inputStream.read(sizeBuffer)
+                    if (bytesRead == -1) {
+                        // Fine dello stream
+                        println("Connessione chiusa dal client.")
+                        break
+                    } else if (bytesRead < 4) {
+                        println("Impossibile leggere la dimensione del frame.")
+                        break
                     }
 
-                    // Aggiorna l'immagine nel ViewModel solo quando il frame è completo
-                    if (totalBytesRead == frameSize) {
-                        viewModel.receiveFrame(buffer)
-                        println("Ricevuto frame con dimensione: $frameSize bytes")
+                    val frameSize = ByteBuffer.wrap(sizeBuffer).order(ByteOrder.BIG_ENDIAN).int
+
+                    // Verifica che la dimensione sia positiva
+                    if (frameSize > 0) {
+                        val buffer = ByteArray(frameSize)
+                        var totalBytesRead = 0
+
+                        while (totalBytesRead < frameSize) {
+                            val readBytes = inputStream.read(buffer, totalBytesRead, frameSize - totalBytesRead)
+                            if (readBytes == -1) {
+                                println("Stream interrotto durante la lettura del frame.")
+                                break
+                            }
+                            totalBytesRead += readBytes
+                        }
+
+                        if (totalBytesRead == frameSize) {
+                            // Aggiorna l'immagine nel ViewModel
+                            viewModel.receiveFrame(buffer)
+                            println("Ricevuto frame con dimensione: $frameSize bytes")
+                        } else {
+                            println("Frame incompleto, bytes ricevuti: $totalBytesRead di $frameSize")
+                            break
+                        }
                     } else {
-                        println("Frame incompleto, bytes ricevuti: $totalBytesRead di $frameSize")
+                        println("Errore: dimensione frame negativa o zero.")
+                        break
                     }
-                } else {
-                    println("Errore: dimensione frame negativa o zero.")
                 }
+            } catch (e: Exception) {
+                println("Errore durante la gestione del client: ${e.message}")
+            } finally {
+                inputStream.close()
             }
-            inputStream.close()
         }
     }
 }

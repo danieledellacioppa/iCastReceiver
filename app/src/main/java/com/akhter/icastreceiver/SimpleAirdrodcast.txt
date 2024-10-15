@@ -47,30 +47,34 @@ class MainActivity : ComponentActivity() {
     private fun handleClient(inputStream: InputStream) {
         lifecycleScope.launch(Dispatchers.IO) {
             val byteArrayOutputStream = ByteArrayOutputStream()
-            val buffer = ByteArray(4) // Buffer per i primi 4 byte che contengono la dimensione del frame
 
-            while (true) {
-                // Leggi la dimensione del frame
-                if (inputStream.read(buffer) != 4) break
-                val dataSize = ByteBuffer.wrap(buffer).int
-                println("Ricevuto frame con dimensione: $dataSize bytes")
+            // Leggi i primi 4 byte per la dimensione del frame
+            val sizeBuffer = ByteArray(4)
+            if (inputStream.read(sizeBuffer) == 4) {
+                val frameSize = java.nio.ByteBuffer.wrap(sizeBuffer).int
 
-                // Leggi il frame in base alla dimensione
-                val imageData = ByteArray(dataSize)
-                var totalBytesRead = 0
-                while (totalBytesRead < dataSize) {
-                    val bytesRead = inputStream.read(imageData, totalBytesRead, dataSize - totalBytesRead)
-                    if (bytesRead == -1) break
-                    totalBytesRead += bytesRead
+                // Verifica che la dimensione sia positiva
+                if (frameSize > 0) {
+                    val buffer = ByteArray(frameSize)
+                    var bytesRead: Int = 0
+                    var totalBytesRead = 0
+
+                    while (totalBytesRead < frameSize && inputStream.read(buffer, totalBytesRead, frameSize - totalBytesRead).also { bytesRead = it } != -1) {
+                        totalBytesRead += bytesRead
+                    }
+
+                    // Aggiorna l'immagine nel ViewModel solo quando il frame è completo
+                    if (totalBytesRead == frameSize) {
+                        viewModel.receiveFrame(buffer)
+                        println("Ricevuto frame con dimensione: $frameSize bytes")
+                    } else {
+                        println("Frame incompleto, bytes ricevuti: $totalBytesRead di $frameSize")
+                    }
+                } else {
+                    println("Errore: dimensione frame negativa o zero.")
                 }
-                println("Frame completo ricevuto, aggiornamento della vista...")
-
-                // Aggiorna l'immagine nel ViewModel
-                viewModel.receiveFrame(imageData)
             }
-
             inputStream.close()
-            byteArrayOutputStream.close()
         }
     }
 }

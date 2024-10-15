@@ -9,7 +9,6 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.asImageBitmap
-import com.example.icastreceiver.ScreenCastViewModel
 
 @Composable
 fun MainScreen(viewModel: ScreenCastViewModel) {
