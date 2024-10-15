@@ -1,0 +1,132 @@
+Ecco il nome del file numero 1:
+--- MainActivity.kt ---
+Contenuto del file numero 1:
+---
+package com.akhter.icastreceiver
+
+import android.os.Bundle
+import androidx.activity.ComponentActivity
+import androidx.activity.compose.setContent
+import androidx.lifecycle.ViewModelProvider
+import androidx.lifecycle.lifecycleScope
+import com.example.icastreceiver.MainScreen
+import com.example.icastreceiver.ScreenCastViewModel
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import java.io.ByteArrayOutputStream
+import java.io.InputStream
+import java.net.ServerSocket
+
+class MainActivity : ComponentActivity() {
+
+    private lateinit var viewModel: ScreenCastViewModel
+    private val serverPort = 5000  // Assicurati che corrisponda a quello impostato su iOS
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+
+        viewModel = ViewModelProvider(this).get(ScreenCastViewModel::class.java)
+
+        setContent {
+            MainScreen(viewModel = viewModel)
+        }
+
+        startServer()
+    }
+
+    private fun startServer() {
+        lifecycleScope.launch(Dispatchers.IO) {
+            val serverSocket = ServerSocket(serverPort)
+            while (true) {
+                val clientSocket = serverSocket.accept()
+                handleClient(clientSocket.getInputStream())
+            }
+        }
+    }
+
+    private fun handleClient(inputStream: InputStream) {
+        lifecycleScope.launch(Dispatchers.IO) {
+            // Riceve i dati dell’immagine dal client e li converte in un array di byte
+            val buffer = ByteArray(1024 * 1024)  // 1MB buffer, dimensione variabile a seconda della risoluzione
+            var bytesRead: Int
+            val byteArrayOutputStream = ByteArrayOutputStream()
+
+            while (inputStream.read(buffer).also { bytesRead = it } != -1) {
+                byteArrayOutputStream.write(buffer, 0, bytesRead)
+            }
+
+            val imageData = byteArrayOutputStream.toByteArray()
+
+            // Aggiorna l'immagine nel ViewModel
+            viewModel.receiveFrame(imageData)
+
+            // Chiudi la connessione
+            inputStream.close()
+            byteArrayOutputStream.close()
+        }
+    }
+}
+--- Fine del contenuto del file numero 1 ---
+
+Ecco il nome del file numero 2:
+--- MainScreen.kt ---
+Contenuto del file numero 2:
+---
+package com.example.icastreceiver
+
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.material3.Text
+import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.res.imageResource
+import androidx.compose.ui.unit.dp
+import coil.compose.AsyncImage
+import coil.compose.rememberAsyncImagePainter
+import java.io.ByteArrayInputStream
+
+@Composable
+fun MainScreen(viewModel: ScreenCastViewModel = viewModel()) {
+    val imageData by viewModel.imageData.collectAsState()
+
+    Box(modifier = Modifier.fillMaxSize()) {
+        imageData?.let { data ->
+            val bitmap = ImageBitmap.imageResource(data)
+            Image(bitmap = bitmap, contentDescription = null, modifier = Modifier.fillMaxSize())
+        } ?: run {
+            Text(text = "In attesa dello screencast...", modifier = Modifier.align(Alignment.Center))
+        }
+    }
+}
+--- Fine del contenuto del file numero 2 ---
+
+Ecco il nome del file numero 3:
+--- ScreenCastViewModel.kt ---
+Contenuto del file numero 3:
+---
+package com.example.icastreceiver
+
+import androidx.lifecycle.ViewModel
+import androidx.lifecycle.viewModelScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.launch
+
+class ScreenCastViewModel : ViewModel() {
+
+    private val _imageData = MutableStateFlow<ByteArray?>(null)
+    val imageData = _imageData.asStateFlow()
+
+    fun receiveFrame(data: ByteArray) {
+        viewModelScope.launch(Dispatchers.IO) {
+            _imageData.value = data
+        }
+    }
+}
+--- Fine del contenuto del file numero 3 ---
+
